@@ -1,0 +1,196 @@
+{
+  "version": "8",
+  "description": "Four-family 3D CNN ensemble (80 %) blended in logit space with a multiscale semi-quantitative striatal feature model (20 %). Volumes are canonicalised to RAS before any geometric step.",
+  "grids": {
+    "g64": {
+      "voxel_mm": 2.0,
+      "crop_mm": 128.0,
+      "brain_frac": 0.15,
+      "brain_pct": 99.5,
+      "hot_pct": 99.0,
+      "search_mm": 60.0,
+      "ref_exclude_pct": 95.0,
+      "clip": 12.0,
+      "grid": 64
+    },
+    "g96": {
+      "voxel_mm": 1.3333,
+      "crop_mm": 128.0,
+      "brain_frac": 0.15,
+      "brain_pct": 99.5,
+      "hot_pct": 99.0,
+      "search_mm": 60.0,
+      "ref_exclude_pct": 95.0,
+      "clip": 12.0,
+      "grid": 96
+    }
+  },
+  "cnn_families": {
+    "sm0": {
+      "arch": "DatNet",
+      "stem_stride": 3,
+      "grid": "g96",
+      "n_models": 30,
+      "tta": "si_rl",
+      "tta_views": 4,
+      "train_aug": "original axes, geometric strength 1.5x (rot 15.0, trans 0.090, scale 0.075, intensity 0.1), label smoothing 0.0, PLUS an ADDED spatially-correlated count-noise-like field at M=2.5 P=0.9: with probability 0.9, white noise smoothed at FWHM~U(5,15)mm is ADDED, rescaled to SD = U(0.25,0.625) x that scan's own intensity SD. Blur explicitly DISABLED: measured -0.0014 in blend while noise alone gave +0.0034)",
+      "oof": {
+        "log_loss": 0.2635,
+        "auroc": 0.9568
+      },
+      "n_models_note": "30 = two independent training draws x 15 folds, POOLED. The better single draw blends to 0.2442 and the worse to 0.2455; shipping the better one would be selecting the luckier of two coin flips, so both ship and the declared blend is their average, 0.2448."
+    },
+    "siamese": {
+      "arch": "SiameseDatNet",
+      "stem_stride": 3,
+      "grid": "g96",
+      "n_models": 15,
+      "tta": "si_rot_scale",
+      "tta_views": 10,
+      "tta_note": "structurally L<->R invariant, so R-L mirror TTA is a mathematical no-op (verified exact); S-I flips plus rotation and scale are worth +0.0341 standalone",
+      "train_aug": "corrected axes (R-L mirror, axial rotation), strength 1.0x, label smoothing 0.05",
+      "oof": {
+        "log_loss": 0.274,
+        "auroc": 0.9535
+      }
+    },
+    "med3d": {
+      "arch": "MedResNet3d",
+      "stem_stride": 3,
+      "_stem_stride_note": "ignored: conv1 is 7^3 stride 2 + maxpool, there is no configurable stem",
+      "grid": "g96",
+      "n_models": 15,
+      "tta": "rl",
+      "tta_views": 2,
+      "norm": "zscore",
+      "norm_note": "PER-SCAN z-scoring, not the global /CUBE_SCALE the other families use. MedicalNet was pretrained on zero-mean/unit-variance volumes; measured +0.0227 for the pretrained model and -0.0298 for a random-init one, so this is domain matching and is NOT optional.",
+      "train_aug": "original axes, geometric strength 1.5x, label smoothing 0.0, per-scan z-score",
+      "oof": {
+        "log_loss": 0.2833,
+        "auroc": 0.9491,
+        "note": "these are the checkpoints IN this package. The development run m3d_pre_std scored 0.2812/0.9499; that number must not be quoted for this artifact."
+      },
+      "external_weights": {
+        "source": "MedicalNet / Med3D r10 (Chen, Ma & Zheng 2019, arXiv:1904.00625)",
+        "licence": "MIT (Tencent / THL A29) \u2014 permits commercial use",
+        "pretraining_data": "aggregate of 23 public 3D medical CT/MRI segmentation datasets",
+        "shipped": "fine-tuned state_dict only; the original resnet_10_23dataset.pth is NOT required in the ZIP because the fine-tuned weights are self-contained",
+        "DISCLOSURE": "rule 5 requires external data AND pretrained models to be disclosed to the organizers. ANSWERED by the organizers 2026-07-31 (jury/ORGANIZER_CORRESPONDENCE.md): permissively licensed (MIT/Apache) weights are fine, upstream training-data licences do not matter unless the model itself is non-permissive, and there is NO need to disclose until after the competition closes -- they contact winners then. No pre-submission forum post is required."
+      },
+      "_reproducibility": "NOT bit-reproducible. Diagnosed precisely: PyTorch has no deterministic `max_pool3d_with_indices_backward_cuda`. Removing the max-pool makes two independent runs byte-identical, which isolates it. Measured across FIVE independent retrains: component SD 0.0010, BLEND SD 0.00014 (95% upper bound 0.0004). The shipped weights are pinned by MD5 in submissions/008a_checkpoint_md5s.json."
+    },
+    "slicenet": {
+      "arch": "SliceNet",
+      "stem_stride": 3,
+      "_stem_stride_note": "ignored: SliceNet is 2.5D and has no 3D stem",
+      "grid": "g96",
+      "n_models": 15,
+      "tta": "rl",
+      "tta_views": 2,
+      "norm": "scale",
+      "train_aug": "original axes, geometric strength 1.5x, label smoothing 0.0",
+      "oof": {
+        "log_loss": 0.2917,
+        "auroc": 0.951
+      },
+      "_provenance": "pos variant. Chosen over nopos on DESIGN grounds, not score: the two are statistically identical (0.2917 vs 0.2910, r=0.9985) and an S-I-invariant net cannot use the S-I flip augmentation, our largest single lever. Retrain reproduced the original OOF BIT-IDENTICALLY (max per-scan diff 0)."
+    }
+  },
+  "cnn_combine": "equal-weight mean of the FOUR CNN families' logits (sm0, siamese, slicenet, med3d), then 0.8*that + 0.2*logit(SBR)",
+  "feature_names": [
+    "sbr_max",
+    "sbr_mean",
+    "vol_gt2",
+    "vol_gt3",
+    "vol_gt4",
+    "extent_z",
+    "spread",
+    "sbr_l_v0p5",
+    "sbr_r_v0p5",
+    "sbr_min_side_v0p5",
+    "asym_index_v0p5",
+    "sbr_ant_l_v0p5",
+    "sbr_post_l_v0p5",
+    "sbr_ant_r_v0p5",
+    "sbr_post_r_v0p5",
+    "pc_ratio_min_v0p5",
+    "pc_ratio_asym_v0p5",
+    "sbr_l_v2",
+    "sbr_r_v2",
+    "sbr_min_side_v2",
+    "asym_index_v2",
+    "sbr_ant_l_v2",
+    "sbr_post_l_v2",
+    "sbr_ant_r_v2",
+    "sbr_post_r_v2",
+    "pc_ratio_min_v2",
+    "pc_ratio_asym_v2",
+    "sbr_l_v5",
+    "sbr_r_v5",
+    "sbr_min_side_v5",
+    "asym_index_v5",
+    "sbr_ant_l_v5",
+    "sbr_post_l_v5",
+    "sbr_ant_r_v5",
+    "sbr_post_r_v5",
+    "pc_ratio_min_v5",
+    "pc_ratio_asym_v5",
+    "sbr_l_v10",
+    "sbr_r_v10",
+    "sbr_min_side_v10",
+    "asym_index_v10",
+    "sbr_ant_l_v10",
+    "sbr_post_l_v10",
+    "sbr_ant_r_v10",
+    "sbr_post_r_v10",
+    "pc_ratio_min_v10",
+    "pc_ratio_asym_v10",
+    "abs_shift_mm",
+    "landmark_sep_mm",
+    "reliable"
+  ],
+  "sbr": {
+    "n_models": 15,
+    "grid": "g64",
+    "features": "datpark.features_v2.FEATURE_NAMES_V2, robust_midline=False",
+    "n_features": 50,
+    "volumes_ml": [
+      0.5,
+      2.0,
+      5.0,
+      10.0
+    ],
+    "oof": {
+      "log_loss": 0.4134,
+      "auroc": 0.9047,
+      "_note": "raw out-of-fold, uncalibrated. The single-scale predecessor scored 0.4404/0.8927."
+    },
+    "_geometric_columns": "abs_shift_mm, landmark_sep_mm and reliable describe an optional landmark-based midline that is DISABLED in this configuration, so they are constant zero \u2014 identically when the boosters were fitted and at inference. They are retained because the boosters were fitted on this exact 50-column manifest; dropping them would misalign every column."
+  },
+  "blend": {
+    "w_cnn": 0.8,
+    "note": "logit space, raw booster output. The weight was swept on this four-CNN core (0.10 -> 0.2477, 0.15 -> 0.2469, 0.20 -> 0.2472, 0.25 -> 0.2485): a broad optimum. 0.20 is retained unchanged so that the feature-model change is the only variable."
+  },
+  "calibration_applied": false,
+  "calibration_note": "None. The Platt constants exported for 003 were fitted on the OOF they were scored on and are not reproducible at inference. Cross-fitted temperature scaling measured worse than raw. All CV figures here use raw booster output, matching what this code computes.",
+  "clip": [
+    0.0001,
+    0.9999
+  ],
+  "train_prevalence": 0.5484581497797357,
+  "cv": {
+    "scheme": "grouped 5-fold x 3 seeds by acquisition group, n = 1362",
+    "n": 1362,
+    "log_loss": 0.2426,
+    "auroc": 0.9622,
+    "basis": "sm0 pooled 30 checkpoints under si_rl test-time augmentation, siamese si_rot_scale, slicenet rl, med3d rl, feature model raw.",
+    "_uncertainty": "the improvement over the single-scale feature model is +0.0022 with a centre-clustered paired standard error of 0.0015, i.e. about 1.5 SE. The public evaluation set is small enough that its sampling error is an order of magnitude larger, so a single public score cannot resolve a difference of this size."
+  },
+  "blend_note": "grouped CV 0.2448 / AUROC 0.9613 on 1362 scans, 13 acquisition groups, 5 folds x 3 seeds. Against 008a (0.2472 / 0.9607) the delta is +0.0023 with a centre-clustered paired SE of 0.0037, i.e. |d|/SE = 0.63: an unbiased POSITIVE estimate that is NOT statistically significant. Six of six seed-level deltas were positive across two independent training draws, which supports the SIGN and not the magnitude. This claim is stated at exactly that strength deliberately; an earlier archive shipped an overstated one.",
+  "orientation": {
+    "canonicalised": true,
+    "how": "nibabel.as_closest_canonical in datpark.preprocess.load_volume, before reading voxel sizes",
+    "why": "the left/right split and the striatum search both assume RAS (axis 0 = R+); a volume stored in another orientation would have its laterality silently transposed",
+    "no_op_on_ras": "verified on the training set: all 1362 volumes are RAS, and load_volume returns bit-identical arrays and voxel sizes with and without the step"
+  }
+}
