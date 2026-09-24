@@ -1,0 +1,13 @@
+// How the three submitted models relate.  Render: dot -Tsvg lineage.dot -o ../figures/lineage.svg
+digraph lineage {
+  graph [rankdir=LR, bgcolor="#0d1117", pad=0.3, nodesep=0.3, ranksep=0.6, fontname="Helvetica"];
+  node  [shape=box, style="rounded,filled", fillcolor="#161b22", color="#30363d", fontcolor="#c9d1d9",
+         fontname="Helvetica", fontsize=11, margin="0.2,0.1"];
+  edge  [color="#8b949e", arrowsize=0.6, fontname="Helvetica", fontsize=9, fontcolor="#8b949e"];
+
+  a [label="1 · 008a\nCV 0.2472 · public 0.2653\nprivate 0.3054", color="#f78166", fillcolor="#2a1d1b"];
+  b [label="2 · 011\nCV 0.2448 · public 0.2665"];
+  c [label="3 · 012\nCV 0.2426 · public 0.2702"];
+  a -> b [label="sm0 retrained with\ncount noise, 2 draws"];
+  b -> c [label="50-feature SBR head\n+ RAS orientation guard"];
+}

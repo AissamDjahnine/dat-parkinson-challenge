@@ -1,0 +1,33 @@
+// 008a inference pipeline.  Render: dot -Tsvg pipeline.dot -o ../figures/pipeline.svg
+digraph pipeline {
+  graph [rankdir=LR, bgcolor="#0d1117", pad=0.3, nodesep=0.25, ranksep=0.45, fontname="Helvetica"];
+  node  [shape=box, style="rounded,filled", fillcolor="#161b22", color="#30363d", fontcolor="#c9d1d9",
+         fontname="Helvetica", fontsize=11, margin="0.18,0.08"];
+  edge  [color="#8b949e", arrowsize=0.6, fontname="Helvetica", fontsize=9, fontcolor="#8b949e"];
+
+  scan [label="DaT SPECT\nNIfTI volume", fillcolor="#1f2a37", color="#58a6ff"];
+  pre  [label="brain mask\nstriatal centre\nreference level", color="#8b949e"];
+  g96  [label="96³ @ 1.33 mm"];
+  g64  [label="64³ @ 2.0 mm"];
+
+  subgraph cluster_cnn {
+    label="four 3D CNN families · 60 checkpoints"; fontcolor="#8b949e"; fontsize=10;
+    color="#30363d"; style="rounded";
+    sm0  [label="sm0  DatNet ×15\n0.2694"];
+    sia  [label="siamese ×15\n0.2740"];
+    sl   [label="slicenet 2.5D ×15\n0.2917"];
+    md   [label="med3d ResNet-10 ×15\n0.2833"];
+  }
+  mean [label="mean of logits", shape=ellipse];
+  sbr  [label="20 binding-ratio features\nLightGBM ×15\n0.4404", color="#3fb950"];
+  fuse [label="0.8 · CNN + 0.2 · SBR\nlogit space", shape=ellipse];
+  out  [label="p(abnormal)\nCV 0.2472 · AUROC 0.9607", fillcolor="#1c2d22", color="#3fb950"];
+
+  scan -> pre;
+  pre -> g96; pre -> g64;
+  g96 -> sm0; g96 -> sia; g96 -> sl; g96 -> md;
+  sm0 -> mean; sia -> mean; sl -> mean; md -> mean;
+  g64 -> sbr;
+  mean -> fuse [label="0.8"]; sbr -> fuse [label="0.2"];
+  fuse -> out;
+}
