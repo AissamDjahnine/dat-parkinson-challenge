@@ -1,0 +1,20 @@
+# Competition data and everything derived from it - never committed
+data/
+artifacts/
+dist/
+*.nii
+*.nii.gz
+*.csv
+
+# Trained weights - staged into solutions/*/assets/ by scripts/pack.sh, never committed
+solutions/*/assets/cnn/
+solutions/*/assets/models/
+*.pt
+*.pth
+*.safetensors
+*.zip
+
+# Environment
+.venv/
+__pycache__/
+*.py[cod]
