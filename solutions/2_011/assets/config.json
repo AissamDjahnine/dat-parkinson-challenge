@@ -1,0 +1,157 @@
+{
+  "version": "011",
+  "description": "4x 96^3 CNN (DatNet blur/noise-augmented + Siamese + SliceNet 2.5D + MedicalNet r10 z-scored) 80% + SBR/LightGBM 20%, equal-weight logit blend",
+  "grids": {
+    "g64": {
+      "voxel_mm": 2.0,
+      "crop_mm": 128.0,
+      "brain_frac": 0.15,
+      "brain_pct": 99.5,
+      "hot_pct": 99.0,
+      "search_mm": 60.0,
+      "ref_exclude_pct": 95.0,
+      "clip": 12.0,
+      "grid": 64
+    },
+    "g96": {
+      "voxel_mm": 1.3333,
+      "crop_mm": 128.0,
+      "brain_frac": 0.15,
+      "brain_pct": 99.5,
+      "hot_pct": 99.0,
+      "search_mm": 60.0,
+      "ref_exclude_pct": 95.0,
+      "clip": 12.0,
+      "grid": 96
+    }
+  },
+  "cnn_families": {
+    "sm0": {
+      "arch": "DatNet",
+      "stem_stride": 3,
+      "grid": "g96",
+      "n_models": 30,
+      "tta": "si_rl",
+      "tta_views": 4,
+      "train_aug": "original axes, geometric strength 1.5x (rot 15.0, trans 0.090, scale 0.075, intensity 0.1), label smoothing 0.0, PLUS an ADDED spatially-correlated count-noise-like field at M=2.5 P=0.9 (datpark/augment3.py::blur_noise, --bn-m 2.5 --bn-p 0.9 --bn-no-blur): with probability 0.9, white noise smoothed at FWHM~U(5,15)mm is ADDED, rescaled to SD = U(0.25,0.625) x that scan's own intensity SD. Blur explicitly DISABLED: measured -0.0014 in blend while noise alone gave +0.0034 -- Notes.md 45)",
+      "oof": {
+        "log_loss": 0.2635,
+        "auroc": 0.9568
+      },
+      "n_models_note": "30 = two independent training draws x 15 folds, POOLED. The better single draw blends to 0.2442 and the worse to 0.2455; shipping the better one would be selecting the luckier of two coin flips, so both ship and the declared blend is their average, 0.2448."
+    },
+    "siamese": {
+      "arch": "SiameseDatNet",
+      "stem_stride": 3,
+      "grid": "g96",
+      "n_models": 15,
+      "tta": "si_rot_scale",
+      "tta_views": 10,
+      "tta_note": "structurally L<->R invariant, so R-L mirror TTA is a mathematical no-op (verified exact); S-I flips plus rotation and scale are worth +0.0341 standalone",
+      "train_aug": "corrected axes (R-L mirror, axial rotation), strength 1.0x, label smoothing 0.05",
+      "oof": {
+        "log_loss": 0.274,
+        "auroc": 0.9535
+      }
+    },
+    "med3d": {
+      "arch": "MedResNet3d",
+      "stem_stride": 3,
+      "_stem_stride_note": "ignored: conv1 is 7^3 stride 2 + maxpool, there is no configurable stem",
+      "grid": "g96",
+      "n_models": 15,
+      "tta": "rl",
+      "tta_views": 2,
+      "norm": "zscore",
+      "norm_note": "PER-SCAN z-scoring, not the global /CUBE_SCALE the other families use. MedicalNet was pretrained on zero-mean/unit-variance volumes; Notes.md \u00a732 measured +0.0227 for the pretrained model and -0.0298 for a random-init one, so this is domain matching and is NOT optional.",
+      "train_aug": "original axes, geometric strength 1.5x, label smoothing 0.0, per-scan z-score",
+      "oof": {
+        "log_loss": 0.2833,
+        "auroc": 0.9491,
+        "note": "these are the checkpoints IN this package. The development run m3d_pre_std scored 0.2812/0.9499; that number must not be quoted for this artifact."
+      },
+      "external_weights": {
+        "source": "MedicalNet / Med3D r10 (Chen, Ma & Zheng 2019, arXiv:1904.00625)",
+        "licence": "MIT (Tencent / THL A29) \u2014 permits commercial use",
+        "pretraining_data": "aggregate of 23 public 3D medical CT/MRI segmentation datasets",
+        "shipped": "fine-tuned state_dict only; the original resnet_10_23dataset.pth is NOT required in the ZIP because the fine-tuned weights are self-contained",
+        "DISCLOSURE": "rule 5 requires external data AND pretrained models to be disclosed to the organizers. ANSWERED by the organizers 2026-07-31 (jury/ORGANIZER_CORRESPONDENCE.md): permissively licensed (MIT/Apache) weights are fine, upstream training-data licences do not matter unless the model itself is non-permissive, and there is NO need to disclose until after the competition closes -- they contact winners then. No pre-submission forum post is required."
+      },
+      "_reproducibility": "NOT bit-reproducible. Diagnosed precisely: PyTorch has no deterministic `max_pool3d_with_indices_backward_cuda`. Removing the max-pool makes two independent runs byte-identical, which isolates it. Measured across FIVE independent retrains: component SD 0.0010, BLEND SD 0.00014 (95% upper bound 0.0004). The shipped weights are pinned by MD5 in submissions/008a_checkpoint_md5s.json."
+    },
+    "slicenet": {
+      "arch": "SliceNet",
+      "stem_stride": 3,
+      "_stem_stride_note": "ignored: SliceNet is 2.5D and has no 3D stem",
+      "grid": "g96",
+      "n_models": 15,
+      "tta": "rl",
+      "tta_views": 2,
+      "norm": "scale",
+      "train_aug": "original axes, geometric strength 1.5x, label smoothing 0.0",
+      "oof": {
+        "log_loss": 0.2917,
+        "auroc": 0.951
+      },
+      "_provenance": "pos variant. Chosen over nopos on DESIGN grounds, not score: the two are statistically identical (0.2917 vs 0.2910, r=0.9985) and an S-I-invariant net cannot use the S-I flip augmentation, our largest single lever. Retrain reproduced the original OOF BIT-IDENTICALLY (max per-scan diff 0)."
+    }
+  },
+  "cnn_combine": "equal-weight mean of the FOUR CNN families' logits (sm0, siamese, slicenet, med3d), then 0.8*that + 0.2*logit(SBR)",
+  "feature_names": [
+    "sbr_max",
+    "sbr_mean",
+    "sbr_l",
+    "sbr_r",
+    "sbr_min_side",
+    "sbr_max_side",
+    "asym_index",
+    "sbr_ant_l",
+    "sbr_post_l",
+    "sbr_ant_r",
+    "sbr_post_r",
+    "pc_ratio_l",
+    "pc_ratio_r",
+    "pc_ratio_min",
+    "pc_ratio_asym",
+    "vol_gt2",
+    "vol_gt3",
+    "vol_gt4",
+    "extent_z",
+    "spread"
+  ],
+  "sbr": {
+    "n_models": 15,
+    "grid": "g64",
+    "oof": {
+      "log_loss": 0.4404,
+      "auroc": 0.8927,
+      "_note": "raw out-of-fold log loss (`oof_raw`). The previous value 0.4104 was `oof_cal`, a Platt fit scored on its own out-of-fold predictions: 0.0300 optimistic and never applied at inference (`calibration_applied: false`)."
+    }
+  },
+  "blend": {
+    "w_cnn": 0.8,
+    "note": "logit space, raw booster output. w_sbr swept on THIS four-CNN core: 0.10 -> 0.2477, 0.15 -> 0.2469, 0.20 -> 0.2472, 0.25 -> 0.2485. Broad optimum; 0.20 retained for continuity. (This field previously contained the TWO-CNN 005 curve by copy-paste.)"
+  },
+  "calibration_applied": false,
+  "calibration_note": "None. The Platt constants exported for 003 were fitted on the OOF they were scored on and are not reproducible at inference. Cross-fitted temperature scaling measured worse than raw. All CV figures here use raw booster output, matching what this code computes.",
+  "clip": [
+    0.0001,
+    0.9999
+  ],
+  "train_prevalence": 0.5484581497797357,
+  "cv": {
+    "scheme": "grouped 5-fold x 3 seeds on artifacts/folds.csv",
+    "n": 1362,
+    "log_loss": 0.2448,
+    "auroc": 0.9613,
+    "brier": 0.075,
+    "ece": 0.0159,
+    "basis": "SHIPPED configuration: the sm0 slot is the POOLED 30 noise-augmented checkpoints scored under the si_rl TTA scheme, plus the siamese/slicenet/med3d checkpoints contained in this package. Development variants (the `rl` basis) give slightly different numbers and are NOT quoted here.",
+    "vs_005": "+0.0102 (P=0.979, centre-clustered 95% CI [+0.0003, +0.0207]). The only candidate whose interval excludes zero, and it does so by +0.0003 -- arithmetically real, practically at the boundary. Stable under leave-one-centre-out (+0.0068 to +0.0127).",
+    "vs_008a": "+0.0023 (P=0.722, centre-clustered 95% CI [-0.0035, +0.0109]). A 3-in-4 call, NOT a result: the interval spans zero. Read 011 as the better point estimate and the better bet, NOT the better model. Supporting evidence independent of this blend arithmetic: the replacement sm0 member is stronger STANDALONE than the one it displaces in BOTH draws (0.2619 and 0.2670 vs 0.2691, si_rl basis), and six of six seed-level deltas were positive across two independent training draws (1-in-64 under a true zero).",
+    "honest_note": "This candidate inherits 008a's TWO arm selections (slicenet from 4 configs, med3d from 18 arms) AND adds an augmentation chosen from a 6-arm sweep. Every selection is disclosed in Notes.md 33/34/45. 011 -- not 005 -- is the submission as of 2026-08-03.",
+    "reproducibility": "The 30 sm0 checkpoints ARE bit-reproducible: re-running inference over them reproduced the archived out-of-fold predictions with a maximum per-scan difference of 0.00e+00 (scripts/verify_011.py, 2026-08-03). The med3d family is NOT bit-reproducible (PyTorch has no deterministic max_pool3d_with_indices_backward_cuda); retraining reproduces the blend to within a small measured tolerance. The exact shipped weights are pinned by MD5 in submissions/011_checkpoint_md5s.json.",
+    "correction_2026_07_31": "An earlier build of this file stated log_loss 0.2468, auroc 0.9608 and \"+0.0082 (P=0.985, 95% CI [+0.0009, +0.0152]) \u2014 the ONLY candidate whose interval excludes zero\". Those figures came from a development OOF (m3d_pre_std), not from the checkpoints shipped here, and on the shipped basis the interval does NOT exclude zero. Quoting the favourable basis was our error; it is corrected here and in jury/SOLUTION_REPORT.md \u00a76."
+  },
+  "blend_note": "grouped CV 0.2448 / AUROC 0.9613 on 1362 scans, 13 acquisition groups, 5 folds x 3 seeds. Against 008a (0.2472 / 0.9607) the delta is +0.0023 with a centre-clustered paired SE of 0.0037, i.e. |d|/SE = 0.63: an unbiased POSITIVE estimate that is NOT statistically significant. Six of six seed-level deltas were positive across two independent training draws, which supports the SIGN and not the magnitude. This claim is stated at exactly that strength deliberately; an earlier archive shipped an overstated one."
+}
