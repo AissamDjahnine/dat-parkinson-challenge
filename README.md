@@ -20,6 +20,17 @@ This is the cleaned residue of the work: the three best submissions, the code th
 
 ---
 
+## Competition results
+
+The competition page records **1,009 joined**. Team **Mobarmij** finished **59th on the private
+leaderboard**, with log loss **0.3054** and AUROC **0.9379**.
+
+![DaT Parkinson's Challenge overview showing 1,009 joined](docs/figures/competition-overview.png)
+
+![Private leaderboard showing Mobarmij at rank 59, log loss 0.3054 and AUROC 0.9379](docs/figures/private-leaderboard.png)
+
+---
+
 ## Quick start
 
 ```bash
