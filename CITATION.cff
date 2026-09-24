@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using this metadata."
+type: software
+title: "DaT SPECT — abnormality classification"
+authors:
+  - family-names: Djahnine
+    given-names: Aissam
+version: 1.0.0
+date-released: "2026-09-24"
+repository-code: "https://github.com/AissamDjahnine/dat-parkinson-challenge"
+url: "https://github.com/AissamDjahnine/dat-parkinson-challenge/releases/tag/v1.0.0"
+license: MIT
+abstract: >-
+  Team Mobarmij's solution to the DrivenData DaT Parkinson's Challenge,
+  classifying dopamine-transporter SPECT scans as normal or abnormal.
+  The final private leaderboard result was 59th, with log loss 0.3054
+  and AUROC 0.9379.
